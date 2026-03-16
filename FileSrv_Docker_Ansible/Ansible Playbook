@@ -1,0 +1,55 @@
+---
+- name: Deploy Samba File Server in Docker
+  hosts: localhost
+  connection: local
+  become: yes
+
+  vars:
+    samba_shares:
+      - name: shared
+        path: /srv/samba/shared_folder
+      - name: new1_share
+        path: /mnt/new1
+      - name: new2_share
+        path: /mnt/new2
+
+  tasks:
+    - name: Create Samba directories
+      file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0770'
+      loop: "{{ samba_shares }}"
+
+    - name: Configure Samba (smb.conf)
+      template:
+        src: templates/smb.conf.j2
+        dest: /etc/samba/smb.conf
+      notify: restart samba
+
+    - name: Configure Kerberos (krb5.conf)
+      template:
+        src: templates/krb5.conf.j2
+        dest: /etc/krb5.conf
+
+    - name: Configure NSS (nsswitch.conf)
+      template:
+        src: templates/nsswitch.conf.j2
+        dest: /etc/nsswitch.conf
+
+    - name: Ensure Samba services are started via service
+      command: |
+        service smbd start
+        service nmbd start
+        service winbind start
+      ignore_errors: yes
+
+  handlers:
+    - name: restart samba
+      command: |
+        service smbd restart
+        service nmbd restart
+        service winbind restart
+      listen: "restart samba"
