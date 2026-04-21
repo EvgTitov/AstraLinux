@@ -26,3 +26,10 @@ sudo chmod +x /usr/local/bin/clean-trash.sh
 sudo crontab -e
 # Добавить строку:
 0 0 * * * /usr/local/bin/clean-trash.sh
+
+# Алиас для просмотра статистики
+echo 'alias trash-stats="echo \"=== Размер корзин ===\" && sudo du -sh /mnt/*/Trash 2>/dev/null && echo \"\" && echo \"=== Последние очистки ===\" && sudo tail -10 /var/log/trash-cleanup.log"' >> ~/.bashrc
+source ~/.bashrc
+
+# Просмотр логов
+sudo tail -f /var/log/trash-cleanup.log
