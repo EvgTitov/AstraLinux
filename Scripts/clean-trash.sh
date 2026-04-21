@@ -107,13 +107,13 @@ clean_trash_folder() {
 
 echo "$(date): ========== ЗАПУСК ОЧИСТКИ ==========" >> "$LOG_FILE"
 
-# Создаем папки Trash если их нет (GID группы ad7 = 16312)
+# Создаем папки Trash если их нет (GID группы ad7 = 16312) (пример для 4 сетевых шар)
 create_trash_folder "/mnt/Smeta/Trash" "Smeta" "16312"
 create_trash_folder "/mnt/Ten/Trash" "Ten" "16312"
 create_trash_folder "/mnt/PU/Trash" "PU" "16312"
 create_trash_folder "/mnt/U/Trash" "U" "16312"
 
-# Очищаем корзины
+# Очищаем корзины (пример для 4 сетевых шар)
 clean_trash_folder "/mnt/Smeta/Trash" "Smeta"
 clean_trash_folder "/mnt/Ten/Trash" "Ten"
 clean_trash_folder "/mnt/PU/Trash" "PU"
