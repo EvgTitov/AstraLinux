@@ -1,0 +1,57 @@
+#!/bin/bash
+
+SOURCE="/mnt/Smeta/"
+DEST="/data/Smeta/"
+LOG_DIR="/data/logs"
+LOG_FILE="$LOG_DIR/sync_$(date +%Y%m%d_%H%M%S).log"
+
+RSYNC_OPTS="-Aavh --delete --progress"
+
+mkdir -p "$LOG_DIR"
+mkdir -p "$DEST"
+
+echo "==================================================" | tee "$LOG_FILE"
+echo "СИНХРОНИЗАЦИЯ: $(date '+%Y-%m-%d %H:%M:%S')" | tee -a "$LOG_FILE"
+echo "Источник (NFS с fs11): $SOURCE" | tee -a "$LOG_FILE"
+echo "Приемник: $DEST" | tee -a "$LOG_FILE"
+echo "Режим: Зеркалирование (с удалением лишнего)" | tee -a "$LOG_FILE"
+echo "==================================================" | tee -a "$LOG_FILE"
+
+if ! mountpoint -q /mnt/Smeta/ 2>/dev/null; then
+    echo "❌ ОШИБКА: /mnt/Smeta/ не является точкой монтирования" | tee -a "$LOG_FILE"
+    exit 1
+fi
+echo "✅ NFS смонтирован" | tee -a "$LOG_FILE"
+
+if ! sudo test -d "$SOURCE"; then
+    echo "❌ ОШИБКА: Нет доступа к источнику $SOURCE" | tee -a "$LOG_FILE"
+    exit 1
+fi
+echo "✅ Доступ к источнику есть" | tee -a "$LOG_FILE"
+
+SOURCE_FILES=$(sudo find "$SOURCE" -type f 2>/dev/null | wc -l)
+echo "Файлов в источнике: $SOURCE_FILES" | tee -a "$LOG_FILE"
+
+echo "" | tee -a "$LOG_FILE"
+echo "Запуск синхронизации..." | tee -a "$LOG_FILE"
+echo "==================================================" | tee -a "$LOG_FILE"
+
+sudo rsync $RSYNC_OPTS "$SOURCE" "$DEST" 2>&1 | tee -a "$LOG_FILE"
+
+if [ ${PIPESTATUS[0]} -eq 0 ]; then
+    echo "==================================================" | tee -a "$LOG_FILE"
+    echo "✅ СИНХРОНИЗАЦИЯ УСПЕШНО ЗАВЕРШЕНА" | tee -a "$LOG_FILE"
+
+    DEST_FILES=$(find "$DEST" -type f 2>/dev/null | wc -l)
+    DEST_SIZE=$(du -sh "$DEST" 2>/dev/null | cut -f1)
+    echo "Файлов в приемнике: $DEST_FILES" | tee -a "$LOG_FILE"
+    echo "Размер приемника: $DEST_SIZE" | tee -a "$LOG_FILE"
+else
+    echo "❌ ОШИБКА ПРИ СИНХРОНИЗАЦИИ" | tee -a "$LOG_FILE"
+    exit 1
+fi
+
+echo "Лог сохранен: $LOG_FILE" | tee -a "$LOG_FILE"
+echo "==================================================" | tee -a "$LOG_FILE"
+
+exit 0
