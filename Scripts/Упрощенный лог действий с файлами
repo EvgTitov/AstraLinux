@@ -1,0 +1,94 @@
+#!/bin/bash
+
+# =============================================================================
+# parse-audit.sh - Парсинг аудита Samba из journald
+# =============================================================================
+# Описание:
+#   Скрипт собирает логи Samba из systemd journald, фильтрует только
+#   значимые действия (удаление, перемещение, копирование) и записывает их
+#   в упрощенном виде в папку Trash каждой шары.
+#
+# Логируемые действия:
+#   - unlinkat  -> 🗑 УДАЛИЛ ФАЙЛ
+#   - rmdir     -> 🗑 УДАЛИЛ ПАПКУ
+#   - renameat  -> 📁 ПЕРЕМЕСТИЛ/ПЕРЕИМЕНОВАЛ
+#   - linkat    -> 📋 СКОПИРОВАЛ
+#
+# Шары:
+#   - Smeta   (/data/Smeta/Trash/audit.log)
+#   - Ten     (/data/Ten/Trash/audit.log)
+#   - otd-33  (/data/otd-33/Trash/audit.log)
+#   - U       (/data/U/Trash/audit.log)
+# =============================================================================
+
+# Временный файл для накопления записей
+TEMP_FILE="/tmp/audit_parse.tmp"
+> "$TEMP_FILE"
+
+# ----- 1. Сбор и фильтрация логов из journald -----
+# 50000 строк — достаточно для последних действий
+journalctl -u smbd -n 50000 --output=short-iso 2>/dev/null \
+    | grep "smbd_audit" \
+    | grep -E "unlinkat|renameat|rmdir|linkat" \
+    | grep -v "Trash" > /tmp/audit_raw.txt
+
+# ----- 2. Парсинг и форматирование -----
+while IFS= read -r line; do
+    # Извлечение времени (формат: 2026-08-06T11:33:33+0300)
+    timestamp=$(echo "$line" | cut -d' ' -f1 | sed 's/T/ /' | cut -d'.' -f1)
+
+    # Извлечение данных после "smbd_audit[PID]: "
+    data=$(echo "$line" | sed -E 's/.*smbd_audit\[[0-9]+\]: //')
+
+    # Разбор полей, разделенных "|"
+    user=$(echo "$data" | cut -d'|' -f1 | sed 's/GAP_RT\\//')
+    share=$(echo "$data" | cut -d'|' -f3)
+    action=$(echo "$data" | cut -d'|' -f4)
+    path=$(echo "$data" | cut -d'|' -f6-)
+
+    # Перевод действия в русский язык
+    case "$action" in
+        unlinkat) action_ru="🗑 УДАЛИЛ ФАЙЛ" ;;
+        rmdir)    action_ru="🗑 УДАЛИЛ ПАПКУ" ;;
+        renameat) action_ru="📁 ПЕРЕМЕСТИЛ/ПЕРЕИМЕНОВАЛ" ;;
+        linkat)   action_ru="📋 СКОПИРОВАЛ" ;;
+        *)        action_ru="$action" ;;
+    esac
+
+    # Запись в формате: ВРЕМЯ | ШАРА | ПОЛЬЗОВАТЕЛЬ | ДЕЙСТВИЕ | ПУТЬ
+    echo "$timestamp | $share | $user | $action_ru | $path"
+
+done < /tmp/audit_raw.txt >> "$TEMP_FILE"
+
+# Удаление сырого файла
+rm -f /tmp/audit_raw.txt
+
+# ----- 3. Запись в логи для каждой шары -----
+for share in Smeta Ten otd-33 U; do
+    trash_path="/data/$share/Trash"
+    [ ! -d "$trash_path" ] && continue
+
+    logfile="$trash_path/audit.log"
+
+    {
+        echo "================================================================================"
+        echo "                    УПРОЩЕННЫЙ ЛОГ ДЕЙСТВИЙ С ФАЙЛАМИ"
+        echo "                    ШАРА: $share"
+        echo "================================================================================"
+        echo "Время              | Шара    | Кто сделал    | Действие           | Что сделал"
+        echo "-------------------|---------|---------------|--------------------|-------------------"
+        grep " | $share | " "$TEMP_FILE" | tail -50
+        echo ""
+        echo "================================================================================"
+        echo "Обновлено: $(date '+%d.%m.%Y %H:%M:%S')"
+        echo "================================================================================"
+    } | sudo tee "$logfile" > /dev/null
+
+    # Установка прав: владелец root, группа ad7, права 644
+    sudo chown root:ad7 "$logfile" 2>/dev/null || sudo chown root:root "$logfile"
+    sudo chmod 644 "$logfile"
+    sudo setfacl -b "$logfile" 2>/dev/null
+done
+
+# ----- 4. Очистка временного файла -----
+rm -f "$TEMP_FILE"
