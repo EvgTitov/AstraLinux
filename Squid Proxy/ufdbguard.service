@@ -1,0 +1,15 @@
+[Unit]
+Description=ufdbGuard Filtering Proxy
+After=network.target
+
+[Service]
+Type=forking
+User=ufdb
+Group=ufdb
+ExecStart=/usr/local/ufdbguard/bin/ufdbguardd -c /usr/local/ufdbguard/etc/ufdbGuard.conf
+ExecReload=/bin/kill -HUP $MAINPID
+PIDFile=/run/ufdbguard/ufdbguardd.pid
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
